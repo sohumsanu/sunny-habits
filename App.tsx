@@ -47,6 +47,9 @@ export default function App() {
     const key = todayKey();
     setLogs((old) => ({ ...old, [key]: { ...old[key], [habit.id]: Math.max(0, (old[key]?.[habit.id] || 0) + change) } }));
   };
+  const updateCountForDate = (habit: Habit, key: string, count: number) => {
+    setLogs((old) => ({ ...old, [key]: { ...old[key], [habit.id]: Math.max(0, count) } }));
+  };
   const completedToday = habits.filter((h) => (logs[todayKey()]?.[h.id] || 0) >= h.target).length;
 
   return (
@@ -59,7 +62,7 @@ export default function App() {
           renderItem={({ item }) => <HabitCard habit={item} count={logs[todayKey()]?.[item.id] || 0} onIncrement={() => updateCount(item, 1)} onDecrement={() => updateCount(item, -1)} onOpen={() => setDetail(item)} />} />
       </View>
       <HabitEditor habit={editing} onClose={() => setEditing(null)} onSave={(habit) => { setHabits((old) => habit.id ? old.map((h) => h.id === habit.id ? habit : h) : [...old, { ...habit, id: Date.now().toString() }]); setEditing(null); }} onDelete={(id) => { setHabits((old) => old.filter((h) => h.id !== id)); setEditing(null); }} />
-      <HabitDetail habit={detail} logs={logs} onClose={() => setDetail(null)} onEdit={() => { setDetail(null); setEditing(detail); }} />
+      <HabitDetail habit={detail} logs={logs} onClose={() => setDetail(null)} onEdit={() => { setDetail(null); setEditing(detail); }} onSetCount={updateCountForDate} />
     </SafeAreaView>
   );
 }
@@ -72,7 +75,7 @@ function HabitCard({ habit, count, onIncrement, onDecrement, onOpen }: { habit: 
     {habit.target === 1 ? <Pressable onPress={onIncrement} style={[styles.check, done && { backgroundColor: habit.color, borderColor: habit.color }]}><Text style={styles.checkMark}>{done ? '✓' : ''}</Text></Pressable> : <View style={styles.stepper}><Pressable onPress={onDecrement} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable><Text style={styles.stepCount}>{count}</Text><Pressable onPress={onIncrement} style={[styles.stepButton, { backgroundColor: habit.color, borderColor: habit.color }]}><Text style={styles.stepPlus}>+</Text></Pressable></View>}</View>;
 }
 
-function HabitDetail({ habit, logs, onClose, onEdit }: { habit: Habit | null; logs: Logs; onClose: () => void; onEdit: () => void }) {
+function LegacyHabitDetail({ habit, logs, onClose, onEdit }: { habit: Habit | null; logs: Logs; onClose: () => void; onEdit: () => void }) {
   if (!habit) return null;
   const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d; });
   return <Modal animationType="slide" visible transparent onRequestClose={onClose}><View style={styles.modalShade}><View style={styles.sheet}><View style={styles.grabber}/><View style={styles.detailTop}><Pressable onPress={onClose}><Text style={styles.close}>‹</Text></Pressable><Text style={styles.detailTitle}>Habit progress</Text><Pressable onPress={onEdit}><Text style={styles.edit}>Edit</Text></Pressable></View><View style={styles.detailHero}><View style={[styles.bigIcon, { backgroundColor: habit.color }]}><Text style={{ fontSize: 35 }}>{habit.icon}</Text></View><Text style={styles.detailName}>{habit.name}</Text><Text style={styles.detailSub}>Last 30 days · goal: {habit.target} {displayUnit(habit)}</Text></View><View style={styles.legend}><Text style={styles.legendText}>Less</Text>{[0, .25, .5, .75, 1].map((p) => <View key={p} style={[styles.legendBox, { backgroundColor: habit.color, opacity: p === 0 ? .12 : .2 + p * .8 }]} />)}<Text style={styles.legendText}>Complete</Text></View><View style={styles.calendar}>{days.map((d) => { const count = logs[dateKey(d)]?.[habit.id] || 0; const ratio = count / habit.target; const clampedRatio = Math.min(1, ratio); const isToday = dateKey(d) === todayKey(); return <View key={dateKey(d)} style={styles.day}><Text style={styles.dayLabel}>{d.toLocaleDateString('en', { weekday: 'narrow' })}</Text><View style={[styles.dayBox, { backgroundColor: habit.color, opacity: clampedRatio ? .2 + clampedRatio * .8 : .1 }, isToday && styles.todayBox]}><Text style={[styles.dayNumber, ratio >= 0.7 && { color: '#fff' }]}>{d.getDate()}</Text></View>{habit.target > 1 && ratio > 0 && ratio < 1 && <Text style={styles.percent}>{Math.round(ratio * 100)}%</Text>}{ratio > 1 && <Text style={styles.percent}>{count} {displayUnit(habit)}</Text>}</View>; })}</View><View style={styles.tip}><Text style={styles.tipIcon}>✦</Text><Text style={styles.tipText}>Each square shows progress toward your daily {displayUnit(habit)} goal.</Text></View></View></View></Modal>;
@@ -83,6 +86,24 @@ function LegacyHabitEditor({ habit, onClose, onSave, onDelete }: { habit: Habit 
   useEffect(() => setDraft(habit), [habit]);
   if (!draft) return null;
   return <Modal animationType="slide" visible transparent onRequestClose={onClose}><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalShade}><View style={styles.sheet}><View style={styles.grabber}/><View style={styles.detailTop}><Pressable onPress={onClose}><Text style={styles.cancel}>Cancel</Text></Pressable><Text style={styles.detailTitle}>{draft.id ? 'Edit habit' : 'New habit'}</Text><Pressable onPress={() => { if (draft.name.trim()) onSave({ ...draft, name: draft.name.trim(), unit: draft.unit.trim() || 'steps' }); }}><Text style={styles.edit}>Save</Text></Pressable></View><ScrollView showsVerticalScrollIndicator={false}><Text style={styles.fieldLabel}>NAME YOUR HABIT</Text><TextInput autoFocus value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} placeholder="e.g. Drink water" placeholderTextColor="#B4A79B" style={styles.input}/><Text style={styles.fieldLabel}>PICK AN ICON</Text><View style={styles.iconGrid}>{ICONS.map((icon) => <Pressable key={icon} onPress={() => setDraft({ ...draft, icon })} style={[styles.pickIcon, draft.icon === icon && { backgroundColor: draft.color }]}><Text style={{ fontSize: 22 }}>{icon}</Text></Pressable>)}</View><Text style={styles.fieldLabel}>DAILY GOAL</Text><View style={styles.targetRow}><Pressable onPress={() => setDraft({ ...draft, target: Math.max(1, draft.target - 1) })} style={styles.targetButton}><Text style={styles.stepText}>−</Text></Pressable><View><Text style={styles.targetNumber}>{draft.target}</Text><Text style={styles.targetCaption}>{draft.target === 1 ? 'one check-off' : 'check-offs per day'}</Text></View><Pressable onPress={() => setDraft({ ...draft, target: Math.min(20, draft.target + 1) })} style={[styles.targetButton, { backgroundColor: draft.color, borderColor: draft.color }]}><Text style={styles.stepPlus}>+</Text></Pressable></View><Text style={styles.fieldLabel}>WHAT ARE YOU COUNTING?</Text><TextInput value={draft.unit} onChangeText={(unit) => setDraft({ ...draft, unit })} placeholder="e.g. glasses, pages, liters" placeholderTextColor="#B4A79B" style={styles.input} maxLength={24}/><Text style={styles.unitHint}>Use a plural word for your count, like “glasses” or “pages”.</Text>{draft.id ? <Pressable onPress={() => Alert.alert('Delete habit?', `Remove ${draft.name}?`, [{ text: 'Keep it', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => onDelete(draft.id) }])}><Text style={styles.delete}>Delete habit</Text></Pressable> : null}</ScrollView></View></KeyboardAvoidingView></Modal>;
+}
+
+function HabitDetail({ habit, logs, onClose, onEdit, onSetCount }: { habit: Habit | null; logs: Logs; onClose: () => void; onEdit: () => void; onSetCount: (habit: Habit, key: string, count: number) => void }) {
+  const [selectedKey, setSelectedKey] = useState(todayKey());
+  if (!habit) return null;
+  const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d; });
+  const selectedDate = days.find((d) => dateKey(d) === selectedKey) || days[days.length - 1];
+  const selectedCount = logs[selectedKey]?.[habit.id] || 0;
+  const unit = displayUnit(habit);
+
+  return <Modal animationType="slide" visible transparent onRequestClose={onClose}>
+    <View style={styles.modalShade}><View style={styles.sheet}>
+      <View style={styles.grabber}/><View style={styles.detailTop}><Pressable onPress={onClose}><Text style={styles.close}>‹</Text></Pressable><Text style={styles.detailTitle}>Habit progress</Text><Pressable onPress={onEdit}><Text style={styles.edit}>Edit</Text></Pressable></View>
+      <View style={styles.detailHero}><View style={[styles.bigIcon, { backgroundColor: habit.color }]}><Text style={{ fontSize: 35 }}>{habit.icon}</Text></View><Text style={styles.detailName}>{habit.name}</Text><Text style={styles.detailSub}>Tap a day to update its progress</Text></View>
+      <View style={styles.calendar}>{days.map((d) => { const key = dateKey(d); const count = logs[key]?.[habit.id] || 0; const ratio = count / habit.target; const selected = key === selectedKey; return <Pressable key={key} onPress={() => setSelectedKey(key)} style={styles.day}><Text style={styles.dayLabel}>{d.toLocaleDateString('en', { weekday: 'narrow' })}</Text><View style={[styles.dayBox, { backgroundColor: habit.color, opacity: ratio ? .2 + Math.min(1, ratio) * .8 : .1 }, selected && { borderWidth: 2, borderColor: '#B65C40' }]}><Text style={[styles.dayNumber, ratio >= .7 && { color: '#fff' }]}>{d.getDate()}</Text></View>{habit.target > 1 && ratio > 0 && ratio < 1 && <Text style={styles.percent}>{Math.round(ratio * 100)}%</Text>}</Pressable>; })}</View>
+      <View style={styles.tip}><Text style={styles.tipIcon}>✦</Text><View style={{ flex: 1 }}><Text style={styles.detailSub}>{selectedDate.toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' })}</Text>{habit.target === 1 ? <Pressable onPress={() => onSetCount(habit, selectedKey, selectedCount ? 0 : 1)}><Text style={styles.edit}>{selectedCount ? '✓ Completed — tap to undo' : 'Mark as complete'}</Text></Pressable> : <View style={styles.stepper}><Pressable onPress={() => onSetCount(habit, selectedKey, selectedCount - 1)} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable><Text style={styles.stepCount}>{selectedCount} {unit}</Text><Pressable onPress={() => onSetCount(habit, selectedKey, selectedCount + 1)} style={[styles.stepButton, { backgroundColor: habit.color, borderColor: habit.color }]}><Text style={styles.stepPlus}>+</Text></Pressable></View>}</View></View>
+    </View></View>
+  </Modal>;
 }
 
 function HabitEditor({ habit, onClose, onSave, onDelete }: { habit: Habit | null; onClose: () => void; onSave: (habit: Habit) => void; onDelete: (id: string) => void }) {
